@@ -1,0 +1,109 @@
+## Read Data
+library(knitr)
+library(tidyr)
+library(tidyverse)
+library(lubridate)
+nypddata <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+knitr::kable(head(nypddata))
+
+## Clean data
+library(dplyr)
+library(ggplot2)
+# select only needed data
+nypddata1 <- drop_na(nypddata) %>%
+select(-c(INCIDENT_KEY, LOCATION_DESC, X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat, JURISDICTION_CODE, OCCUR_TIME))
+# change the date type
+nypddata1 <- nypddata1 %>%
+mutate(OCCUR_DATE = mdy(OCCUR_DATE))
+#change logical boolean into int.
+nypddata1$STATISTICAL_MURDER_FLAG [nypddata1$STATISTICAL_MURDER_FLAG == 'TRUE'] <- 1
+nypddata1$STATISTICAL_MURDER_FLAG [nypddata1$STATISTICAL_MURDER_FLAG == 'FALSE'] <- 0
+nypd_murder_boro <- nypddata1 %>%
+group_by(BORO) %>%
+# summarize(STATISTICAL_MURDER_FLAG = sum(STATISTICAL_MURDER_FLAG)) %>%
+select(BORO, OCCUR_DATE, STATISTICAL_MURDER_FLAG) %>%
+ungroup()
+nypd_murder_boro_1 <- nypd_murder_boro %>%
+group_by(BORO, OCCUR_DATE) %>%
+summarize(STATISTICAL_MURDER_FLAG = STATISTICAL_MURDER_FLAG) %>%
+select(BORO, OCCUR_DATE, STATISTICAL_MURDER_FLAG) %>%
+ungroup()
+# add new columns
+nypd_murder_boro_1$cummurder <- ave(nypd_murder_boro_1$STATISTICAL_MURDER_FLAG, nypd_murder_boro_1$BORO, FUN = cumsum)
+nypd_murder_boro_1['shooting'] = 1
+nypd_murder_boro_1$cumshooting <- ave(nypd_murder_boro_1$shooting, nypd_murder_boro_1$BORO, FUN = cumsum)
+nypd_murder_boro_1$murderpercent <- with(nypd_murder_boro_1, cummurder/cumshooting *100)
+# show the data that will be used for analysis
+knitr::kable(head(nypd_murder_boro_1))
+
+###Visualize Data
+nypd_murder_boro_1 %>%
+ggplot(aes(x = OCCUR_DATE, y=cummurder, group=BORO, color=BORO))+
+geom_line()
+nypd_murder_boro_1 %>%
+ggplot(aes(x = OCCUR_DATE, y=cumshooting, group=BORO, color=BORO))+
+geom_line()
+nypd_murder_boro_1 %>%
+ggplot(aes(x = OCCUR_DATE, y=murderpercent, group=BORO, color=BORO))+
+geom_line()
+
+### Analyze Data
+aggregate(nypd_murder_boro_1$STATISTICAL_MURDER_FLAG, by=list(BORO = nypd_murder_boro_1$BORO), FUN=sum)
+aggregate(nypd_murder_boro_1$shooting, by=list(BORO = nypd_murder_boro_1$BORO), FUN=sum)
+city <- "BRONX"
+nypd_murder_boro_BRONX <- nypd_murder_boro_1 %>%
+filter(BORO == city) %>%
+group_by(BORO, OCCUR_DATE) %>%
+#summarize(STATISTICAL_MURDER_FLAG = STATISTICAL_MURDER_FLAG) %>%
+select(BORO, OCCUR_DATE, shooting, cumshooting, STATISTICAL_MURDER_FLAG, cummurder, murderpercent) %>%
+ungroup()
+knitr::kable(tail(nypd_murder_boro_BRONX))
+city <- "BROOKLYN"
+nypd_murder_boro_BROOKLYN <- nypd_murder_boro_1 %>%
+filter(BORO == city) %>%
+group_by(BORO, OCCUR_DATE) %>%
+#summarize(STATISTICAL_MURDER_FLAG = STATISTICAL_MURDER_FLAG) %>%
+select(BORO, OCCUR_DATE, shooting, cumshooting, STATISTICAL_MURDER_FLAG, cummurder, murderpercent) %>%
+ungroup()
+knitr::kable(tail(nypd_murder_boro_BROOKLYN))
+city <- "STATEN ISLAND"
+nypd_murder_boro_STATENISLAND <- nypd_murder_boro_1 %>%
+filter(BORO == city) %>%
+group_by(BORO, OCCUR_DATE) %>%
+#summarize(STATISTICAL_MURDER_FLAG = STATISTICAL_MURDER_FLAG) %>%
+select(BORO, OCCUR_DATE, shooting, cumshooting, STATISTICAL_MURDER_FLAG, cummurder, murderpercent) %>%
+ungroup()
+knitr::kable(tail(nypd_murder_boro_STATENISLAND))
+city <- "MANHATTAN"
+nypd_murder_boro_MANHATTAN <- nypd_murder_boro_1 %>%
+filter(BORO == city) %>%
+
+group_by(BORO, OCCUR_DATE) %>%
+#summarize(STATISTICAL_MURDER_FLAG = STATISTICAL_MURDER_FLAG) %>%
+select(BORO, OCCUR_DATE, shooting, cumshooting, STATISTICAL_MURDER_FLAG, cummurder, murderpercent) %>%
+ungroup()
+knitr::kable(tail(nypd_murder_boro_MANHATTAN))
+city <- "QUEENS"
+nypd_murder_boro_QUEENS <- nypd_murder_boro_1 %>%
+filter(BORO == city) %>%
+group_by(BORO, OCCUR_DATE) %>%
+#summarize(STATISTICAL_MURDER_FLAG = STATISTICAL_MURDER_FLAG) %>%
+select(BORO, OCCUR_DATE, shooting, cumshooting, STATISTICAL_MURDER_FLAG, cummurder, murderpercent) %>%
+ungroup()
+knitr::kable(tail(nypd_murder_boro_QUEENS))
+
+
+### Build Model
+lmod <- lm(cumshooting ~ cummurder, data = nypd_murder_boro_1)
+summary(lmod)
+nypd_murder_boro_1 %>% slice_min(cumshooting)
+nypd_murder_boro_1 %>% slice_max(cumshooting)
+x_grid <- seq(0, 3000)
+new_df <- tibble(cumshooting = x_grid)
+nypd_pred <- nypd_murder_boro_1 %>% mutate(pred = predict(lmod))
+# nypd_pred
+nypd_pred %>% ggplot() +
+geom_point(aes(x = OCCUR_DATE, y=cumshooting), color= "blue")+
+geom_point(aes(x = OCCUR_DATE, y = pred), color = "red")
+
+
